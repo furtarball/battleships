@@ -1,4 +1,3 @@
-#include "socket.h"
 #include <arpa/inet.h>
 #include <cstdint>
 #include <cstdlib>
@@ -6,17 +5,11 @@
 #include <print>
 #include <set>
 #include <sys/event.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
-
-std::string ipv6_to_string(const struct in6_addr& addr) {
-	std::string r(INET6_ADDRSTRLEN, '\0');
-	if (inet_ntop(AF_INET6, &addr, r.data(), r.length()) == nullptr) {
-		throw PosixException{"Could not print client address"};
-	}
-	return r;
-}
+import wrapped_posix;
 
 int main() {
 	const Socket server_socket{socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)};
@@ -63,6 +56,11 @@ int main() {
 	}
 	std::set<Socket> clients;
 	while (true) {
+		while (events.size() > clients.size() + 1) {
+			events.pop_back();
+			std::println(
+				"Events: {}, clients: {}", events.size(), clients.size());
+		}
 		auto nevents =
 			kevent(kq, nullptr, 0, events.data(), events.size(), nullptr);
 		if (nevents < 0) {
@@ -118,14 +116,9 @@ int main() {
 					}
 					if (clients.erase(static_cast<decltype(clients)::key_type>(
 							e.ident)) != 1) {
-            std::println("Could not remove disconnected client");
+						std::println("Could not remove disconnected client");
 					}
 				}
-			}
-			while (events.size() > clients.size() + 1) {
-				events.pop_back();
-				std::println(
-					"Events: {}, clients: {}", events.size(), clients.size());
 			}
 		}
 	}

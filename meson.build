@@ -1,6 +1,0 @@
-project('battleships', 'cpp', default_options : [ 'b_ndebug=if-release', 'cpp_std=c++23', 'warning_level=2' ])
-subdir('battleships_server')
-subdir('battleships_client')
-inc_dir = include_directories('include')
-executable('server', sources : server_src, include_directories : inc_dir)
-executable('client', sources : client_src, include_directories : inc_dir)

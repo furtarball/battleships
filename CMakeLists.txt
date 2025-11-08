@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.31)
+project(Battleships)
+add_compile_options(-Wall)
+add_executable(BattleshipsServer)
+target_compile_features(BattleshipsServer PUBLIC cxx_std_23)
+add_subdirectory(include)
+add_subdirectory(battleships_server)

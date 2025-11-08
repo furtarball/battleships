@@ -1,3 +1,6 @@
+module;
+#include "types.h"
+#include <arpa/inet.h>
 #include <cstring>
 #include <errno.h>
 #include <stdexcept>
@@ -5,7 +8,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-class PosixException : public std::runtime_error {
+export module wrapped_posix;
+
+export class PosixException : public std::runtime_error {
 	std::string msg;
 
 	public:
@@ -13,7 +18,7 @@ class PosixException : public std::runtime_error {
 		: std::runtime_error{m + ": " + strerror(errno)} {}
 };
 
-class Socket {
+export class Socket {
 	public:
 	int fd;
 	Socket(int fildes) : fd{fildes} {
@@ -28,3 +33,11 @@ class Socket {
 	Socket& operator=(Socket&&) = delete;
 	~Socket() { close(fd); }
 };
+
+export std::string ipv6_to_string(const in6_addr& addr) {
+	std::string r(INET6_ADDRSTRLEN, '\0');
+	if (inet_ntop(AF_INET6, &addr, r.data(), r.length()) == nullptr) {
+		throw PosixException{"Could not print client address"};
+	}
+	return r;
+}

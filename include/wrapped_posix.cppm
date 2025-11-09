@@ -14,8 +14,8 @@ export class PosixException : public std::runtime_error {
 	std::string msg;
 
 	public:
-	PosixException(const std::string m)
-		: std::runtime_error{m + ": " + strerror(errno)} {}
+	PosixException(const std::string m, int err = errno)
+		: std::runtime_error{m + ": " + strerror(err)} {}
 };
 
 export class Socket {

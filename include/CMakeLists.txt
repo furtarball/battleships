@@ -1,7 +1,13 @@
-add_library(wrapped_posix)
-target_sources(wrapped_posix
+add_library(types)
+target_sources(types
 	PUBLIC FILE_SET HEADERS
 		FILES types.h
+)
+set_target_properties(types PROPERTIES LINKER_LANGUAGE CXX)
+add_library(wrapped_posix)
+target_sources(wrapped_posix
+	PRIVATE
+		types
 	PUBLIC FILE_SET CXX_MODULES
 		FILES wrapped_posix.cppm
 )

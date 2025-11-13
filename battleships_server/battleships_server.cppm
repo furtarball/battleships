@@ -11,6 +11,7 @@ module;
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
+import game;
 import wrapped_posix;
 
 export module battleships_server;

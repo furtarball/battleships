@@ -12,3 +12,9 @@ target_sources(wrapped_posix
 		FILES wrapped_posix.cppm
 )
 target_compile_features(wrapped_posix PUBLIC cxx_std_23)
+add_library(game)
+target_sources(game
+	PUBLIC FILE_SET CXX_MODULES
+		FILES game.cppm
+)
+target_compile_features(game PUBLIC cxx_std_23)

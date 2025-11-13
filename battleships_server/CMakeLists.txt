@@ -1,5 +1,6 @@
 target_link_libraries(BattleshipsServer
 	PRIVATE
+		game
 		wrapped_posix
 		types
 )

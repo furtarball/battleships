@@ -1,4 +1,5 @@
 module;
+#include "platform.h"
 #include "types.h"
 #include <arpa/inet.h>
 #include <cstdint>
@@ -6,7 +7,11 @@ module;
 #include <netinet/in.h>
 #include <print>
 #include <set>
+#ifdef HAVE_SYS_EVENT_H
 #include <sys/event.h>
+#else
+#error "sys/event.h not found; server requires kqueue support (BSD, Mac)"
+#endif
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>

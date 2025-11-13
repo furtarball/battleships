@@ -1,12 +1,14 @@
 target_link_libraries(BattleshipsServer
 	PRIVATE
 		game
-		wrapped_posix
 		types
+		wrapped_posix
+		platform
 )
 target_sources(BattleshipsServer
 	PRIVATE
 		main.cpp
-	PRIVATE FILE_SET CXX_MODULES
+	PRIVATE
+		FILE_SET CXX_MODULES
 		FILES battleships_server.cppm
 )

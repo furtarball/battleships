@@ -4,6 +4,7 @@ target_link_libraries(BattleshipsServer
 		types
 		wrapped_posix
 		platform
+		messages
 )
 target_sources(BattleshipsServer
 	PRIVATE

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package Messages;
+
+message Point {
+	uint32 x = 1;
+	uint32 y = 2;
+}
+
+message Ship {
+	repeated Point points = 1;
+}
+
+message Grid {
+	repeated Ship ships = 1;
+}

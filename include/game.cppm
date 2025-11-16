@@ -9,12 +9,14 @@ module;
 #include <vector>
 export module game;
 
+export namespace Game {
+
 // types of ships and number of ships of given type
 const std::map<size_t, size_t> ships_count{
 	{5, 1}, {4, 1}, {3, 2}, {2, 2}, {1, 2}};
 constexpr size_t width{10}, height{10};
 
-export struct Point {
+struct Point {
 	size_t x;
 	size_t y;
 	Point(size_t px, size_t py) : x{px}, y{py} {
@@ -25,18 +27,21 @@ export struct Point {
 	bool operator==(const Point& b) const { return (x == b.x) && (y == b.y); }
 };
 
+} // namespace Game
+
 namespace std {
-template <> struct hash<Point> {
-	size_t operator()(const Point& p) const {
-		return std::hash<decltype(Point::x)>{}(p.x) ^
-			   std::hash<decltype(Point::y)>{}(p.y);
+template <> struct hash<Game::Point> {
+	size_t operator()(const Game::Point& p) const {
+		return std::hash<decltype(Game::Point::x)>{}(p.x) ^
+			   std::hash<decltype(Game::Point::y)>{}(p.y);
 	}
 };
 } // namespace std
 
-export class Grid {
+export namespace Game {
+
+class Grid {
 	std::unordered_set<Point> shots_fired;
-	std::vector<std::unordered_set<Point>> ships;
 	/* random number in range [0, ub) */
 	std::mt19937::result_type rrand(std::mt19937& r, uint32_t ub) {
 		std::mt19937::result_type res{};
@@ -78,6 +83,7 @@ export class Grid {
 	}
 
 	public:
+	std::vector<std::unordered_set<Point>> ships;
 	Grid(Grid&& g) : ships{g.ships} {}
 	Grid(decltype(ships)&& s) : ships{s} {}
 	Grid(uint32_t seed) {
@@ -96,10 +102,12 @@ export class Grid {
 	}
 };
 
-export class Game {
+class Game {
 	Grid grid1, grid2;
 
 	public:
 	Game(Grid&& p1, Grid&& p2)
 		: grid1{std::forward<Grid>(p1)}, grid2{std::forward<Grid>(p2)} {}
 };
+
+} // namespace Game

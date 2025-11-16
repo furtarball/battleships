@@ -24,7 +24,8 @@ target_link_libraries(types
 set_target_properties(types PROPERTIES LINKER_LANGUAGE CXX)
 add_library(wrapped_posix)
 target_sources(wrapped_posix
-	PUBLIC FILE_SET CXX_MODULES
+	PUBLIC
+	FILE_SET CXX_MODULES
 		FILES wrapped_posix.cppm
 )
 target_link_libraries(wrapped_posix
@@ -35,7 +36,28 @@ target_link_libraries(wrapped_posix
 target_compile_features(wrapped_posix PUBLIC cxx_std_23)
 add_library(game)
 target_sources(game
-	PUBLIC FILE_SET CXX_MODULES
+	PUBLIC
+	FILE_SET CXX_MODULES
 		FILES game.cppm
 )
 target_compile_features(game PUBLIC cxx_std_23)
+add_library(messages)
+target_sources(messages
+	PUBLIC
+		grid.proto
+)
+target_include_directories(messages PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+find_package(absl REQUIRED)
+target_link_libraries(messages
+	PUBLIC
+		protobuf::libprotobuf
+		# Workaround for weird linker errors 🙃
+		absl::log_internal_message
+		absl::log_internal_check_op
+)
+find_package(Protobuf REQUIRED)
+protobuf_generate(
+	TARGET messages
+	LANGUAGE cpp
+	PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+)

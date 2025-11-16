@@ -12,6 +12,7 @@ module;
 #else
 #error "sys/event.h not found; server requires kqueue support (BSD, Mac)"
 #endif
+#include "grid.pb.h"
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -116,7 +117,10 @@ export class Server {
 				std::println(stderr, "Warning: lengths returned by kevent() "
 									 "and read() are not equal");
 			}
-			std::println("{}", buf);
+			Messages::Grid pg;
+			if (pg.ParseFromString(buf)) {
+				std::println("{}", pg.DebugString());
+			}
 		}
 		if (e.flags & EV_EOF) {
 			// handle disconnection

@@ -2,6 +2,7 @@ target_link_libraries(BattleshipsClient
 	PRIVATE
 		game
 		messages
+		wrapped_posix
 )
 target_sources(BattleshipsClient
 	PRIVATE

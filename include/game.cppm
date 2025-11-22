@@ -88,6 +88,8 @@ class Grid {
 	Grid(decltype(ships)&& s) : ships{s} {}
 	Grid(uint32_t seed) {
 		randomize(seed);
+	}
+	void print() {
 #ifndef NDEBUG
 		std::print("Grid: ");
 		for (auto& i : ships) {
@@ -103,11 +105,25 @@ class Grid {
 };
 
 class Game {
+	int id1, id2;
 	Grid grid1, grid2;
 
 	public:
-	Game(Grid&& p1, Grid&& p2)
-		: grid1{std::forward<Grid>(p1)}, grid2{std::forward<Grid>(p2)} {}
+	enum State { P1_TURN, P2_TURN, P1_WIN, P2_WIN };
+	State state;
+	std::pair<decltype(id1), decltype(id2)> players() {
+		return {id1, id2};
+	}
+	Game(int i1, int i2, Grid&& p1, Grid&& p2)
+		: id1{i1}, id2{i2}, grid1{std::forward<Grid>(p1)},
+		  grid2{std::forward<Grid>(p2)}, state{P1_TURN} {
+			  // TODO random assignment of players
+#ifndef NDEBUG
+			  // std::println("New game between {} and {}", id1, id2);
+			  // grid1.print();
+			  // grid2.print();
+#endif
+		}
 };
 
 } // namespace Game

@@ -19,8 +19,8 @@ export class PosixException : public std::runtime_error {
 };
 
 export class Socket {
-	public:
 	int fd;
+	public:
 	Socket(int fildes) : fd{fildes} {
 		if (fd < 0) {
 			throw PosixException{"Unable to create socket"};

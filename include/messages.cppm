@@ -5,7 +5,7 @@ import game;
 
 export module messages;
 
-export std::string serialize(const auto& pbmsg) {
+export std::string serialize(const Messages::Wire& pbmsg) {
 	std::string r(sizeof(uint32_t), '\0');
 	pbmsg.AppendToString(&r);
 	uint32_t* len{reinterpret_cast<uint32_t*>(r.data())};

@@ -1,10 +1,10 @@
 target_link_libraries(BattleshipsServer
 	PRIVATE
+		messages
 		game
 		types
 		wrapped_posix
 		platform
-		messages
 )
 target_sources(BattleshipsServer
 	PRIVATE

@@ -2,18 +2,21 @@ syntax = "proto3";
 
 package Messages;
 
-message Length {
-	uint32 length = 1;
-}
-
 message Status {
 	enum StatusCode {
 		READY = 0;
 		AWAITING_GRID = 1;
 		YOUR_MOVE = 2;
 		OPPONENTS_MOVE = 3;
+		WRONG_MOVE = 4;
+		MISS = 5;
+		HIT = 6;
+		WIN = 7;
+		LOSS = 8;
 	}
 	StatusCode code = 1;
+	uint32 hit_ship_size = 2;
+	bool ship_sunken = 3;
 }
 
 message Point {
@@ -27,4 +30,12 @@ message Ship {
 
 message Grid {
 	repeated Ship ships = 1;
+}
+
+message Wire {
+	oneof msg {
+		Status status = 1;
+		Grid grid = 2;
+		Point move = 3;
+	}
 }

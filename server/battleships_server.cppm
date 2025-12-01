@@ -147,10 +147,11 @@ export class Server {
 			waiting.pop_front();
 			pairs.emplace(opponent, *it);
 			pairs.emplace(*it, opponent);
-			Messages::Status awaiting_grid_msg;
-			awaiting_grid_msg.set_code(Messages::Status::AWAITING_GRID);
-			enqueue(*it, awaiting_grid_msg);
-			enqueue(opponent, awaiting_grid_msg);
+			Messages::Wire awaiting_grid;
+			awaiting_grid.mutable_status()->set_code(
+				Messages::Status::AWAITING_GRID);
+			enqueue(*it, awaiting_grid);
+			enqueue(opponent, awaiting_grid);
 			std::println("{} partnered with {}", cfd, opponent);
 		}
 	}
@@ -163,7 +164,7 @@ export class Server {
 			throw PosixException{"Could not enqueue message for sending"};
 		}
 	}
-	void enqueue(int recipient, const auto& msg) {
+	void enqueue(int recipient, const Messages::Wire& msg) {
 		sendbufs[recipient].emplace_back(serialize(msg));
 		add_write_event(recipient);
 	}
@@ -221,38 +222,47 @@ export class Server {
 	void transmit(const kevent_t& e) {
 		auto space{e.data};
 		int id{static_cast<int>(e.ident)};
-		auto& msg{sendbufs.at(id).front()};
-		if (space < msg.length()) {
-			// maybe we'll be able to send next time; re-add event
-			add_write_event(id);
-		} else {
-			auto n{send(id, msg.data(), msg.length(), 0)};
-			if (n < 0) {
-				throw PosixException{"Could not send"};
-			} else if (n < msg.length()) {
-				msg.erase(0, n);
-				add_write_event(id);
-			} else {
-				sendbufs.at(id).pop_front();
-			}
-			if (!sendbufs.at(id).empty()) {
-				add_write_event(id);
-			}
-		}
 		if (e.flags & EV_EOF) {
 			// handle disconnection
 			if (e.fflags) { // EOF was due to error
 				std::println(stderr, "Client error: {}", strerror(e.fflags));
 			}
 			client_cleanup(id);
+			return;
+		}
+		while (!sendbufs.at(id).empty()) {
+			auto& msg{sendbufs.at(id).front()};
+			if (space < msg.length()) {
+				// maybe we'll be able to send next time; re-add event
+				add_write_event(id);
+				return;
+			} else {
+				auto n{send(id, msg.data(), msg.length(), 0)};
+				if (n < 0) {
+					throw PosixException{"Could not send"};
+				} else if (n < msg.length()) {
+					msg.erase(0, n);
+					continue;
+				} else {
+					sendbufs.at(id).pop_front();
+				}
+			}
 		}
 	}
 	void handle(int id) {
 		const auto& str{recvbufs[id].second};
-		Messages::Grid pg;
-		if (pg.ParseFromString(str)) {
+		Messages::Wire w;
+		if (!w.ParseFromString(str)) {
+			std::println(
+				stderr, "Warning: could not parse message from {}", id);
+			recvbufs.erase(id);
+			return;
+		}
+		if (w.has_status()) {
+		} else if (w.has_grid()) {
 			std::println("Got grid from {}", id);
 			auto opponent{pairs.at(id)};
+			auto& pg{*(w.mutable_grid())};
 			// if we're still waiting for opponent's grid
 			if (!submitted_grids.contains(opponent)) {
 				submitted_grids.emplace(id, grid_from_pb_obj(pg));
@@ -263,15 +273,53 @@ export class Server {
 				games.emplace(id, new_game);
 				games.emplace(opponent, new_game);
 				submitted_grids.erase(opponent);
-				Messages::Status whose_move;
-				whose_move.set_code(Messages::Status::YOUR_MOVE);
+				Messages::Wire whose_move;
+				whose_move.mutable_status()->set_code(
+					Messages::Status::YOUR_MOVE);
 				enqueue(id, whose_move);
-				whose_move.set_code(Messages::Status::OPPONENTS_MOVE);
+				whose_move.mutable_status()->set_code(
+					Messages::Status::OPPONENTS_MOVE);
 				enqueue(opponent, whose_move);
 			}
-		} else {
-			std::println(
-				stderr, "Warning: could not parse message from {}", id);
+		} else if (w.has_move()) {
+			std::println("Got move from {}: {}", id, w.move().DebugString());
+			const auto& p{w.move()};
+			auto [ship_hit, sunken] = games.at(id)->shoot(id, p.x(), p.y());
+			std::println("Hit status: {}", ship_hit);
+			Messages::Wire resp;
+			auto opponent{pairs.at(id)};
+			resp.mutable_move()->set_x(p.x());
+			resp.mutable_move()->set_y(p.y());
+			enqueue(opponent, resp);
+			if (ship_hit < 0) {
+				resp.mutable_status()->set_code(Messages::Status::WRONG_MOVE);
+			} else if (ship_hit == 0) {
+				resp.mutable_status()->set_code(Messages::Status::MISS);
+			} else {
+				resp.mutable_status()->set_code(Messages::Status::HIT);
+				resp.mutable_status()->set_hit_ship_size(ship_hit);
+				resp.mutable_status()->set_ship_sunken(sunken);
+				if (games.at(id)->player_won(id)) {
+					enqueue(id, resp);
+					resp.clear_status();
+					resp.mutable_status()->set_code(Messages::Status::WIN);
+					enqueue(id, resp);
+					resp.mutable_status()->set_code(Messages::Status::LOSS);
+					enqueue(opponent, resp);
+					recvbufs.erase(id);
+					return;
+				}
+			}
+			enqueue(id, resp);
+			if (ship_hit >= 0) {
+				enqueue(opponent, resp);
+				resp.clear_status();
+				resp.mutable_status()->set_code(Messages::Status::YOUR_MOVE);
+				enqueue(opponent, resp);
+				resp.mutable_status()->set_code(
+					Messages::Status::OPPONENTS_MOVE);
+				enqueue(id, resp);
+			}
 		}
 		recvbufs.erase(id);
 	}

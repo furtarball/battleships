@@ -127,8 +127,8 @@ export class Server {
 				if (e.events & EPOLLERR)
 #endif
 				{
-					std::println(stderr, "Warning: read muxing error on client {}",
-						id);
+					std::println(
+						stderr, "Warning: read muxing error on client {}", id);
 				}
 #ifdef KQUEUE
 				if (e.ident ==
@@ -155,8 +155,10 @@ export class Server {
 			auto nwrevents{kevent(
 				wrq, nullptr, 0, wrevents.data(), wrevents.size(), &timeout0)};
 #else
-			auto nwrevents{ (wrevents.size() > 0) ?
-				(epoll_wait(wrq, wrevents.data(), wrevents.size(), 0)) : (0)};
+			auto nwrevents{
+				(wrevents.size() > 0)
+					? (epoll_wait(wrq, wrevents.data(), wrevents.size(), 0))
+					: (0)};
 #endif
 			if (nwrevents < 0) {
 				throw PosixException{
@@ -172,7 +174,8 @@ export class Server {
 				if (e.events & EPOLLERR)
 #endif
 				{
-					std::println(stderr, "Warning: write muxing error on client {}", id);
+					std::println(
+						stderr, "Warning: write muxing error on client {}", id);
 					client_cleanup(id);
 				}
 #ifdef KQUEUE
@@ -207,7 +210,8 @@ export class Server {
 		if (epoll_ctl(rdq, EPOLL_CTL_ADD, cfd, &e) < 0)
 #endif
 		{
-			std::println(stderr, "Warning: could not add client socket {} to rdqueue", cfd);
+			std::println(stderr,
+				"Warning: could not add client socket {} to rdqueue", cfd);
 			client_cleanup(cfd);
 			return;
 		}
@@ -238,10 +242,13 @@ export class Server {
 		e.events = EPOLLOUT;
 		e.data.fd = recipient;
 		// ignore EEXIST (repeated call to epoll_ctl for the same fd)
-		if ((epoll_ctl(wrq, EPOLL_CTL_ADD, recipient, &e) < 0) && (errno != EEXIST))
+		if ((epoll_ctl(wrq, EPOLL_CTL_ADD, recipient, &e) < 0) &&
+			(errno != EEXIST))
 #endif
 		{
-			std::println(stderr, "Warning: could not enqueue message for sending to {}: {}", recipient, strerror(errno));
+			std::println(stderr,
+				"Warning: could not enqueue message for sending to {}: {}",
+				recipient, strerror(errno));
 			client_cleanup(recipient);
 		}
 	}
@@ -259,7 +266,9 @@ export class Server {
 		int length{};
 		auto r{ioctl(id, FIONREAD, &length)};
 		if (r < 0) {
-			std::println(stderr, "Warning: could not get incoming message length from {}", id);
+			std::println(stderr,
+				"Warning: could not get incoming message length from {}: {}",
+				id, strerror(errno));
 			client_cleanup(id);
 			return;
 		}
@@ -269,8 +278,9 @@ export class Server {
 			if (len == 0) {
 				auto n{read(id, &len, sizeof(len))};
 				if (n < sizeof(len)) {
-					std::println(
-						stderr, "Warning: could not determine message length from {}", id);
+					std::println(stderr,
+						"Warning: could not determine message length from {}",
+						id);
 				}
 				len = ntohl(len);
 				length -= n;
@@ -281,7 +291,9 @@ export class Server {
 				'\0');
 			auto n{read(id, buf.data(), buf.length())};
 			if (n < 0) {
-				std::println(stderr, "Warning: could not receive message from {}", id);
+				std::println(stderr,
+					"Warning: could not receive message from {}: {}", id,
+					strerror(errno));
 				client_cleanup(id);
 				return;
 			}
@@ -299,7 +311,8 @@ export class Server {
 			// handle disconnection
 #ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(stderr, "Warning: client error: {}", strerror(e.fflags));
+				std::println(
+					stderr, "Warning: client error: {}", strerror(e.fflags));
 			}
 #endif
 			client_cleanup(id);
@@ -328,18 +341,18 @@ export class Server {
 #else
 	void transmit(const epoll_event& e) {
 		int id{e.data.fd};
-		int space{9999}; // TODO
 #endif
 #ifdef KQUEUE
 		if (e.flags & EV_EOF)
 #else
-		if ((space == 0) || (e.events & EPOLLERR))
+		if (e.events & EPOLLERR)
 #endif
 		{
 			// handle disconnection
 #ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(stderr, "Warning: client error: {}", strerror(e.fflags));
+				std::println(
+					stderr, "Warning: client error: {}", strerror(e.fflags));
 			}
 #endif
 			client_cleanup(id);
@@ -347,14 +360,31 @@ export class Server {
 		}
 		while (!sendbufs.at(id).empty()) {
 			auto& msg{sendbufs.at(id).front()};
+#ifdef KQUEUE
 			if (space < msg.length()) {
 				// maybe we'll be able to send next time; re-add event
 				add_write_event(id);
 				return;
-			} else {
+			} else
+#endif
+			{
 				auto n{send(id, msg.data(), msg.length(), 0)};
 				if (n < 0) {
-					std::println(stderr, "Warning: could not send to {}", id);
+#ifdef EPOLL
+					if ((errno == EWOULDBLOCK) || (errno == EAGAIN)) {
+						add_write_event(id);
+						auto& e{wrevents.back()};
+						// checking number of bytes that can be sent without
+						// blocking is a BSD-only feature; as a workaround:
+						// re-add event, but make it edge-triggered
+						e.events |= EPOLLET;
+						if (epoll_ctl(wrq, EPOLL_CTL_MOD, id, &e) >= 0) {
+							continue;
+						}
+					}
+#endif
+					std::println(stderr, "Warning: could not send to {}: {}",
+						id, strerror(errno));
 					client_cleanup(id);
 					return;
 				} else if (n < msg.length()) {

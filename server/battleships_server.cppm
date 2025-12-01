@@ -17,8 +17,14 @@ module;
 #include <vector>
 #ifdef HAVE_SYS_EVENT_H
 #include <sys/event.h>
+#define KQUEUE
 #else
-#error "sys/event.h not found; server requires rdqueue support (BSD, Mac)"
+#ifdef HAVE_SYS_EPOLL_H
+#include <sys/epoll.h>
+#define EPOLL
+#else
+#error "Server requires kqueue or epoll (BSD, Linux, Mac)"
+#endif
 #endif
 import game;
 import messages;
@@ -28,7 +34,11 @@ export module battleships_server;
 
 export class Server {
 	const Socket server_socket;
+#ifdef KQUEUE
 	std::vector<kevent_t> rdevents, wrevents;
+#else
+	std::vector<epoll_event> rdevents, wrevents;
+#endif
 	std::set<Socket> clients;
 	std::map<int, std::deque<std::string>> sendbufs;
 	std::map<int, std::pair<uint32_t, std::string>> recvbufs;
@@ -41,9 +51,15 @@ export class Server {
 	public:
 	Server()
 		: server_socket{socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP)},
-		  rdevents(1), rdq(kqueue()), wrq(kqueue()) {
-		if (rdq < 0) {
-			throw PosixException{"Could not create rdqueue"};
+		  rdevents(1),
+#ifdef KQUEUE
+		  rdq(kqueue()), wrq(kqueue())
+#else
+		  rdq(epoll_create1(0)), wrq(epoll_create1(0))
+#endif
+	{
+		if ((rdq < 0) || (wrq < 0)) {
+			throw PosixException{"Could not create rdqueue and/or wrqueue"};
 		}
 #ifndef NDEBUG
 		std::println("debug build");
@@ -69,11 +85,18 @@ export class Server {
 		if (listen(server_socket, 12) < 0) {
 			throw PosixException{"listen() failed"};
 		}
+#ifdef KQUEUE
 		EV_SET(&rdevents.at(0),
 			static_cast<uintptr_t>(static_cast<int>(server_socket)),
 			EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, nullptr);
 		if (kevent(rdq, rdevents.data(), rdevents.size(), nullptr, 0, nullptr) <
-			0) {
+			0)
+#else
+		rdevents.at(0).events = EPOLLIN;
+		rdevents.at(0).data.fd = server_socket;
+		if (epoll_ctl(rdq, EPOLL_CTL_ADD, server_socket, &rdevents.at(0)) < 0)
+#endif
+		{
 			throw PosixException{"Could not add server socket to rdqueue"};
 		}
 		while (true) {
@@ -84,40 +107,80 @@ export class Server {
 					"Events: {}, clients: {}", rdevents.size(), clients.size());
 #endif
 			}
+#ifdef KQUEUE
 			auto nrdevents{kevent(
 				rdq, nullptr, 0, rdevents.data(), rdevents.size(), nullptr)};
+#else
+			auto nrdevents{
+				epoll_wait(rdq, rdevents.data(), rdevents.size(), -1)};
+#endif
 			if (nrdevents < 0) {
 				throw PosixException{"Could not poll for incoming messages"};
 			}
 			for (int i = 0; i < nrdevents; i++) {
-				const struct kevent& e{rdevents.at(i)};
-				if (e.flags & EV_ERROR) {
-					throw PosixException{"Error checking for incoming messages",
-						static_cast<int>(e.data)};
+				const decltype(rdevents)::value_type& e{rdevents.at(i)};
+#ifdef KQUEUE
+				int id{static_cast<int>(e.ident)};
+				if (e.flags & EV_ERROR)
+#else
+				int id{e.data.fd};
+				if (e.events & EPOLLERR)
+#endif
+				{
+					std::println(stderr, "Warning: read muxing error on client {}",
+						id);
 				}
+#ifdef KQUEUE
 				if (e.ident ==
-					static_cast<uintptr_t>(static_cast<int>(server_socket))) {
+					static_cast<uintptr_t>(static_cast<int>(server_socket)))
+#else
+				if (e.data.fd == static_cast<int>(server_socket))
+#endif
+				{
 					// new connection arrived
 					new_client();
-				} else if (e.filter == EVFILT_READ) {
+				}
+#ifdef KQUEUE
+				else if (e.filter == EVFILT_READ)
+#else
+				else if (e.events & EPOLLIN)
+#endif
+				{
 					// new message arrived
 					receive(e);
 				}
 			}
+#ifdef KQUEUE
 			constexpr struct timespec timeout0{};
 			auto nwrevents{kevent(
 				wrq, nullptr, 0, wrevents.data(), wrevents.size(), &timeout0)};
+#else
+			auto nwrevents{ (wrevents.size() > 0) ?
+				(epoll_wait(wrq, wrevents.data(), wrevents.size(), 0)) : (0)};
+#endif
 			if (nwrevents < 0) {
 				throw PosixException{
 					"Could not poll for sockets ready to send on"};
 			}
 			for (int i = 0; i < nwrevents; i++) {
-				const struct kevent& e{wrevents.at(i)};
-				if (e.flags & EV_ERROR) {
-					throw PosixException{
-						"Error trying to send", static_cast<int>(e.data)};
+				const decltype(rdevents)::value_type& e{wrevents.at(i)};
+#ifdef KQUEUE
+				int id{static_cast<int>(e.ident)};
+				if (e.flags & EV_ERROR)
+#else
+				int id{e.data.fd};
+				if (e.events & EPOLLERR)
+#endif
+				{
+					std::println(stderr, "Warning: write muxing error on client {}", id);
+					client_cleanup(id);
 				}
-				if (e.filter == EVFILT_WRITE) {
+#ifdef KQUEUE
+				if (e.filter == EVFILT_WRITE)
+#else
+				if (e.events & EPOLLOUT)
+#endif
+				{
 					transmit(e);
 				}
 			}
@@ -134,10 +197,19 @@ export class Server {
 		auto [it, st] = clients.emplace(cfd);
 		rdevents.emplace_back();
 		auto& e = rdevents.back();
+#ifdef KQUEUE
 		EV_SET(&e, static_cast<uintptr_t>(cfd), EVFILT_READ, EV_ADD | EV_ENABLE,
 			0, 0, nullptr);
-		if (kevent(rdq, &e, 1, nullptr, 0, nullptr) < 0) {
-			throw PosixException{"Could not add client socket to rdqueue"};
+		if (kevent(rdq, &e, 1, nullptr, 0, nullptr) < 0)
+#else
+		e.events = EPOLLIN;
+		e.data.fd = cfd;
+		if (epoll_ctl(rdq, EPOLL_CTL_ADD, cfd, &e) < 0)
+#endif
+		{
+			std::println(stderr, "Warning: could not add client socket {} to rdqueue", cfd);
+			client_cleanup(cfd);
+			return;
 		}
 		std::println("Client: {}", ipv6_to_string(ca.sin6_addr));
 		if (waiting.empty()) {
@@ -158,26 +230,47 @@ export class Server {
 	void add_write_event(int recipient) {
 		wrevents.emplace_back();
 		auto& e = wrevents.back();
+#ifdef KQUEUE
 		EV_SET(&e, static_cast<uintptr_t>(recipient), EVFILT_WRITE,
 			EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, nullptr);
-		if (kevent(wrq, &e, 1, nullptr, 0, nullptr) < 0) {
-			throw PosixException{"Could not enqueue message for sending"};
+		if (kevent(wrq, &e, 1, nullptr, 0, nullptr) < 0)
+#else
+		e.events = EPOLLOUT;
+		e.data.fd = recipient;
+		// ignore EEXIST (repeated call to epoll_ctl for the same fd)
+		if ((epoll_ctl(wrq, EPOLL_CTL_ADD, recipient, &e) < 0) && (errno != EEXIST))
+#endif
+		{
+			std::println(stderr, "Warning: could not enqueue message for sending to {}: {}", recipient, strerror(errno));
+			client_cleanup(recipient);
 		}
 	}
 	void enqueue(int recipient, const Messages::Wire& msg) {
 		sendbufs[recipient].emplace_back(serialize(msg));
 		add_write_event(recipient);
 	}
+#ifdef KQUEUE
 	void receive(const kevent_t& e) {
 		auto length{e.data};
 		int id{static_cast<int>(e.ident)};
+#else
+	void receive(const epoll_event& e) {
+		int id{e.data.fd};
+		int length{};
+		auto r{ioctl(id, FIONREAD, &length)};
+		if (r < 0) {
+			std::println(stderr, "Warning: could not get incoming message length from {}", id);
+			client_cleanup(id);
+			return;
+		}
+#endif
 		auto& [len, msg] = recvbufs[id];
 		if (length > 0) {
 			if (len == 0) {
 				auto n{read(id, &len, sizeof(len))};
 				if (n < sizeof(len)) {
 					std::println(
-						stderr, "Warning: could not determine message length");
+						stderr, "Warning: could not determine message length from {}", id);
 				}
 				len = ntohl(len);
 				length -= n;
@@ -188,18 +281,27 @@ export class Server {
 				'\0');
 			auto n{read(id, buf.data(), buf.length())};
 			if (n < 0) {
-				std::println(stderr, "Warning: could not receive message");
+				std::println(stderr, "Warning: could not receive message from {}", id);
+				client_cleanup(id);
+				return;
 			}
 			msg += buf;
 		}
 		if ((length > 0) && (msg.length() >= len)) {
 			handle(id);
 		}
-		if (e.flags & EV_EOF) {
+#ifdef KQUEUE
+		if (e.flags & EV_EOF)
+#else
+		if ((length == 0) || (e.events & EPOLLERR))
+#endif
+		{
 			// handle disconnection
+#ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(stderr, "Client error: {}", strerror(e.fflags));
+				std::println(stderr, "Warning: client error: {}", strerror(e.fflags));
 			}
+#endif
 			client_cleanup(id);
 		}
 	}
@@ -219,14 +321,27 @@ export class Server {
 		submitted_grids.erase(c);
 		games.erase(c);
 	}
+#ifdef KQUEUE
 	void transmit(const kevent_t& e) {
 		auto space{e.data};
 		int id{static_cast<int>(e.ident)};
-		if (e.flags & EV_EOF) {
+#else
+	void transmit(const epoll_event& e) {
+		int id{e.data.fd};
+		int space{9999}; // TODO
+#endif
+#ifdef KQUEUE
+		if (e.flags & EV_EOF)
+#else
+		if ((space == 0) || (e.events & EPOLLERR))
+#endif
+		{
 			// handle disconnection
+#ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(stderr, "Client error: {}", strerror(e.fflags));
+				std::println(stderr, "Warning: client error: {}", strerror(e.fflags));
 			}
+#endif
 			client_cleanup(id);
 			return;
 		}
@@ -239,7 +354,9 @@ export class Server {
 			} else {
 				auto n{send(id, msg.data(), msg.length(), 0)};
 				if (n < 0) {
-					throw PosixException{"Could not send"};
+					std::println(stderr, "Warning: could not send to {}", id);
+					client_cleanup(id);
+					return;
 				} else if (n < msg.length()) {
 					msg.erase(0, n);
 					continue;

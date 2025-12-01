@@ -1,3 +1,4 @@
 #cmakedefine HAVE_SYS_EVENT_H
+#cmakedefine HAVE_SYS_EPOLL_H
 #cmakedefine HAVE_KQUEUE
 #cmakedefine HAVE_KEVENT

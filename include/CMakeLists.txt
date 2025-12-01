@@ -1,5 +1,6 @@
 include(CheckIncludeFiles)
 check_include_files("sys/event.h" HAVE_SYS_EVENT_H)
+check_include_files("sys/epoll.h" HAVE_SYS_EPOLL_H)
 include(CheckFunctionExists)
 check_function_exists(kqueue HAVE_KQUEUE)
 check_function_exists(kevent HAVE_KEVENT)

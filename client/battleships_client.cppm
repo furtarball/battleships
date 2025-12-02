@@ -7,7 +7,6 @@ module;
 #include <cstdlib>
 #include <memory>
 #include <netinet/in.h>
-#include <print>
 #include <random>
 #include <set>
 #include <sys/socket.h>
@@ -225,11 +224,11 @@ export class Client {
 				} else if (m.status().code() == Messages::Status::WIN) {
 					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
 						"Battleships", "You win!", window);
-					return 1;
+					return 0;
 				} else if (m.status().code() == Messages::Status::LOSS) {
 					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
 						"Battleships", "You lose!", window);
-					return 1;
+					return 0;
 				}
 			}
 			render();

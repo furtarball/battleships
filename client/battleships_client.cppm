@@ -117,7 +117,7 @@ export class Client {
 			  ((size + margin) * Game::width + margin) * 2,
 			  (size + margin) * Game::height + margin + topbar, 0)},
 		  renderer{SDL_CreateRenderer(window, NULL)},
-		  font{TTF_OpenFont("gallant12x22.ttf", 22)} {
+		  font{TTF_OpenFont((std::string{SDL_GetBasePath()} + "gallant12x22.ttf").c_str(), 22)} {
 		struct sockaddr_in6 sa{};
 		sa.sin6_family = AF_INET6;
 		sa.sin6_port = htons(port);

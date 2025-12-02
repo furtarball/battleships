@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.28)
 project(Battleships)
 add_compile_options(-Wall)
 option(BUILD_SERVER "Build the server executable" ON)

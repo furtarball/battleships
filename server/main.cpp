@@ -1,4 +1,4 @@
-#include <print>
+#include <iostream>
 #include <stdexcept>
 #include <unistd.h>
 import battleships_server;
@@ -8,8 +8,8 @@ int main() {
 		Server server{};
 		server.run();
 	} catch (const std::exception& e) {
-		std::println(stderr, "Server exited with the following error:");
-		std::println(stderr, "{}", e.what());
+		std::cerr << "Server exited with the following error:\n";
+		std::cerr << e.what() << std::endl;
 		return EXIT_FAILURE;
 	}
 }

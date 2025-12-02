@@ -7,9 +7,9 @@ module;
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <iostream>
 #include <memory>
 #include <netinet/in.h>
-#include <print>
 #include <set>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -62,7 +62,7 @@ export class Server {
 			throw PosixException{"Could not create rdqueue and/or wrqueue"};
 		}
 #ifndef NDEBUG
-		std::println("debug build");
+		std::cerr << "debug build\n";
 		constexpr int enable{1};
 		if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable,
 				sizeof(enable)) < 0) {
@@ -103,8 +103,8 @@ export class Server {
 			while (rdevents.size() > clients.size() + 1) {
 				rdevents.pop_back();
 #ifndef NDEBUG
-				std::println(
-					"Events: {}, clients: {}", rdevents.size(), clients.size());
+				std::cerr << "Events: " << rdevents.size()
+						  << ", clients: " << clients.size() << std::endl;
 #endif
 			}
 #ifdef KQUEUE
@@ -127,8 +127,8 @@ export class Server {
 				if (e.events & EPOLLERR)
 #endif
 				{
-					std::println(
-						stderr, "Warning: read muxing error on client {}", id);
+					std::cerr << "Warning: read muxing error on client " << id
+							  << std::endl;
 				}
 #ifdef KQUEUE
 				if (e.ident ==
@@ -174,8 +174,8 @@ export class Server {
 				if (e.events & EPOLLERR)
 #endif
 				{
-					std::println(
-						stderr, "Warning: write muxing error on client {}", id);
+					std::cerr << "Warning: write muxing error on client " << id
+							  << std::endl;
 					client_cleanup(id);
 				}
 #ifdef KQUEUE
@@ -210,12 +210,12 @@ export class Server {
 		if (epoll_ctl(rdq, EPOLL_CTL_ADD, cfd, &e) < 0)
 #endif
 		{
-			std::println(stderr,
-				"Warning: could not add client socket {} to rdqueue", cfd);
+			std::cerr << "Warning: could not add client socket " << cfd
+					  << " to rdqueue" << std::endl;
 			client_cleanup(cfd);
 			return;
 		}
-		std::println("Client: {}", ipv6_to_string(ca.sin6_addr));
+		std::cerr << "Client: " << ipv6_to_string(ca.sin6_addr) << std::endl;
 		if (waiting.empty()) {
 			waiting.push_back(cfd);
 		} else {
@@ -228,7 +228,7 @@ export class Server {
 				Messages::Status::AWAITING_GRID);
 			enqueue(*it, awaiting_grid);
 			enqueue(opponent, awaiting_grid);
-			std::println("{} partnered with {}", cfd, opponent);
+			std::cerr << cfd << " partnered with " << opponent << std::endl;
 		}
 	}
 	void add_write_event(int recipient) {
@@ -246,9 +246,8 @@ export class Server {
 			(errno != EEXIST))
 #endif
 		{
-			std::println(stderr,
-				"Warning: could not enqueue message for sending to {}: {}",
-				recipient, strerror(errno));
+			std::cerr << "Warning: could not enqueue message for sending to "
+					  << recipient << ": " << strerror(errno) << std::endl;
 			client_cleanup(recipient);
 		}
 	}
@@ -266,9 +265,8 @@ export class Server {
 		int length{};
 		auto r{ioctl(id, FIONREAD, &length)};
 		if (r < 0) {
-			std::println(stderr,
-				"Warning: could not get incoming message length from {}: {}",
-				id, strerror(errno));
+			std::cerr << "Warning: could not get incoming message length from "
+					  << id << ": " << strerror(errno) << std::endl;
 			client_cleanup(id);
 			return;
 		}
@@ -278,9 +276,9 @@ export class Server {
 			if (len == 0) {
 				auto n{read(id, &len, sizeof(len))};
 				if (n < sizeof(len)) {
-					std::println(stderr,
-						"Warning: could not determine message length from {}",
-						id);
+					std::cerr
+						<< "Warning: could not determine message length from "
+						<< id << std::endl;
 				}
 				len = ntohl(len);
 				length -= n;
@@ -291,9 +289,8 @@ export class Server {
 				'\0');
 			auto n{read(id, buf.data(), buf.length())};
 			if (n < 0) {
-				std::println(stderr,
-					"Warning: could not receive message from {}: {}", id,
-					strerror(errno));
+				std::cerr << "Warning: could not receive message from " << id
+						  << ": " << strerror(errno) << std::endl;
 				client_cleanup(id);
 				return;
 			}
@@ -311,8 +308,8 @@ export class Server {
 			// handle disconnection
 #ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(
-					stderr, "Warning: client error: {}", strerror(e.fflags));
+				std::cerr << "Warning: client error: " << strerror(e.fflags)
+						  << std::endl;
 			}
 #endif
 			client_cleanup(id);
@@ -351,8 +348,8 @@ export class Server {
 			// handle disconnection
 #ifdef KQUEUE
 			if (e.fflags) { // EOF was due to error
-				std::println(
-					stderr, "Warning: client error: {}", strerror(e.fflags));
+				std::cerr << "Warning: client error: " << strerror(e.fflags)
+						  << std::endl;
 			}
 #endif
 			client_cleanup(id);
@@ -383,8 +380,8 @@ export class Server {
 						}
 					}
 #endif
-					std::println(stderr, "Warning: could not send to {}: {}",
-						id, strerror(errno));
+					std::cerr << "Warning: could not send to " << id << ": "
+							  << strerror(errno) << std::endl;
 					client_cleanup(id);
 					return;
 				} else if (n < msg.length()) {
@@ -400,14 +397,14 @@ export class Server {
 		const auto& str{recvbufs[id].second};
 		Messages::Wire w;
 		if (!w.ParseFromString(str)) {
-			std::println(
-				stderr, "Warning: could not parse message from {}", id);
+			std::cerr << "Warning: could not parse message from " << id
+					  << std::endl;
 			recvbufs.erase(id);
 			return;
 		}
 		if (w.has_status()) {
 		} else if (w.has_grid()) {
-			std::println("Got grid from {}", id);
+			std::cerr << "Got grid from " << id << std::endl;
 			auto opponent{pairs.at(id)};
 			auto& pg{*(w.mutable_grid())};
 			// if we're still waiting for opponent's grid
@@ -429,10 +426,11 @@ export class Server {
 				enqueue(opponent, whose_move);
 			}
 		} else if (w.has_move()) {
-			std::println("Got move from {}: {}", id, w.move().DebugString());
+			std::cerr << "Got move from " << id << ": "
+					  << w.move().DebugString() << std::endl;
 			const auto& p{w.move()};
 			auto [ship_hit, sunken] = games.at(id)->shoot(id, p.x(), p.y());
-			std::println("Hit status: {}", ship_hit);
+			std::cerr << "Hit status: " << ship_hit << std::endl;
 			Messages::Wire resp;
 			auto opponent{pairs.at(id)};
 			resp.mutable_move()->set_x(p.x());

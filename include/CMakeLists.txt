@@ -54,14 +54,10 @@ target_sources(messages
 )
 target_compile_features(messages PUBLIC cxx_std_23)
 target_include_directories(messages PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-find_package(absl REQUIRED)
 target_link_libraries(messages
 	PUBLIC
 		protobuf::libprotobuf
 		game
-		# Workaround for weird linker errors 🙃
-		absl::log_internal_message
-		absl::log_internal_check_op
 )
 find_package(Protobuf REQUIRED)
 protobuf_generate(

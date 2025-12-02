@@ -3,7 +3,6 @@ module;
 #include <functional>
 #include <iterator>
 #include <map>
-#include <print>
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
@@ -114,19 +113,6 @@ class Grid {
 			[](size_t sum, const decltype(ships)::value_type& pts) {
 				return sum + pts.size();
 			});
-	}
-	void print() {
-#ifndef NDEBUG
-		std::print("Grid: ");
-		for (auto& i : ships) {
-			std::print("[ ");
-			for (auto& j : i) {
-				std::print("({}, {}) ", j.x, j.y);
-			}
-			std::print("] ");
-		}
-		std::println();
-#endif
 	}
 };
 

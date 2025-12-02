@@ -11,6 +11,7 @@ module;
 #include <memory>
 #include <netinet/in.h>
 #include <set>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>

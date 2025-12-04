@@ -4,13 +4,6 @@ target_link_libraries(BattleshipsClient
 		game
 		wrapped_posix
 )
-find_package(SDL3)
-find_package(SDL3_ttf)
-target_link_libraries(BattleshipsClient
-	PRIVATE
-		SDL3::SDL3
-		SDL3_ttf::SDL3_ttf
-)
 target_sources(BattleshipsClient
 	PRIVATE
 		main.cpp

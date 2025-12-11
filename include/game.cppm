@@ -56,6 +56,16 @@ class Grid {
 			for (size_t i = 0; i < number; i++) {
 				decltype(ships)::value_type points;
 				auto status{points.emplace(rrand(r, width), rrand(r, height))};
+				bool taken{false};
+				for (const auto& i : ships) {
+					if (i.contains(Point{status.second->x, status.second->y})) {
+						taken = true;
+						break;
+					}
+				}
+				if (taken) {
+					continue;
+				}
 				size_t j = 0;
 				while (j < (size - 1)) {
 					size_t x{status.first->x}, y{status.first->y};
@@ -68,6 +78,16 @@ class Grid {
 						x += (val == 0) ? (1) : (-val);
 					}
 					if ((x >= width) || (y >= height)) {
+						continue;
+					}
+					taken = false;
+					for (const auto& i : ships) {
+						if (i.contains(Point{x, y})) {
+							taken = true;
+							break;
+						}
+					}
+					if (taken) {
 						continue;
 					}
 					status = points.emplace(x, y);

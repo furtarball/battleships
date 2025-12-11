@@ -229,7 +229,9 @@ export class Server {
 				Messages::Status::AWAITING_GRID);
 			enqueue(*it, awaiting_grid);
 			enqueue(opponent, awaiting_grid);
+#ifndef NDEBUG
 			std::cerr << cfd << " partnered with " << opponent << std::endl;
+#endif
 		}
 	}
 	void add_write_event(int recipient) {
@@ -405,7 +407,9 @@ export class Server {
 		}
 		if (w.has_status()) {
 		} else if (w.has_grid()) {
+#ifndef NDEBUG
 			std::cerr << "Got grid from " << id << std::endl;
+#endif
 			auto opponent{pairs.at(id)};
 			auto& pg{*(w.mutable_grid())};
 			// if we're still waiting for opponent's grid
@@ -427,11 +431,15 @@ export class Server {
 				enqueue(opponent, whose_move);
 			}
 		} else if (w.has_move()) {
+#ifndef NDEBUG
 			std::cerr << "Got move from " << id << ": "
 					  << w.move().DebugString() << std::endl;
+#endif
 			const auto& p{w.move()};
 			auto [ship_hit, sunken] = games.at(id)->shoot(id, p.x(), p.y());
+#ifndef NDEBUG
 			std::cerr << "Hit status: " << ship_hit << std::endl;
+#endif
 			Messages::Wire resp;
 			auto opponent{pairs.at(id)};
 			resp.mutable_move()->set_x(p.x());
@@ -450,6 +458,10 @@ export class Server {
 					resp.clear_status();
 					resp.mutable_status()->set_code(Messages::Status::WIN);
 					enqueue(id, resp);
+#ifndef NDEBUG
+					std::cerr << "Player " << id << " wins!" << std::endl;
+					std::cerr << "Player " << opponent << " loses" << std::endl;
+#endif
 					resp.mutable_status()->set_code(Messages::Status::LOSS);
 					enqueue(opponent, resp);
 					recvbufs.erase(id);

@@ -1,6 +1,7 @@
 module;
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <print>
 #include <random>
@@ -12,7 +13,7 @@ export module game;
 export namespace Game {
 
 // types of ships and number of ships of given type
-const std::map<size_t, size_t> ships_count{
+const std::map<size_t, size_t, std::greater<size_t>> ships_count{
 	{5, 1}, {4, 1}, {3, 2}, {2, 2}, {1, 2}};
 constexpr size_t width{10}, height{10};
 
@@ -50,15 +51,34 @@ class Grid {
 		return res % ub;
 	}
 
+	bool point_occupied(Point p) {
+		for (const auto& i : ships) {
+			if (i.contains(p)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void randomize(uint32_t seed) {
 		std::mt19937 r{seed};
 		for (auto& [size, number] : ships_count) {
 			for (size_t i = 0; i < number; i++) {
 				decltype(ships)::value_type points;
-				auto status{points.emplace(rrand(r, width), rrand(r, height))};
+				// starting point for a ship
+				Point s{rrand(r, width), rrand(r, height)};
+				do {
+					s = Point{rrand(r, width), rrand(r, height)};
+				} while (point_occupied(s));
+				points.insert(s);
+				// remaining points of a ship
 				size_t j = 0;
 				while (j < (size - 1)) {
-					size_t x{status.first->x}, y{status.first->y};
+					// pick starting point at random
+					auto n{rrand(r, points.size())};
+					auto start{points.begin()};
+					std::advance(start, n);
+					size_t x{start->x}, y{start->y};
 					enum Direction { VERTICAL, HORIZONTAL };
 					auto dir{rrand(r, 2)};
 					auto val{rrand(r, 2)}; // up (left) or down (right)
@@ -70,7 +90,10 @@ class Grid {
 					if ((x >= width) || (y >= height)) {
 						continue;
 					}
-					status = points.emplace(x, y);
+					if (point_occupied(Point{x, y})) {
+						continue;
+					}
+					auto status{points.emplace(x, y)};
 					if (status.second == false) {
 						continue;
 					}

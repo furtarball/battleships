@@ -31,6 +31,24 @@ cmake --build build
 
 Aby skompilować sam klient lub sam serwer, należy dodatkowo przekazać opcję `-DBUILD_SERVER=OFF` lub `-DBUILD_CLIENT=OFF` do pierwszego polecenia.
 
+### Przykład dla starszej dystrybucji (Debian)
+```
+sudo apt install git cmake clang-19 ninja-build libprotobuf-dev
+# Może być wymagana nowsza wersja CMake lub Ninja niż ta dostępna w repozytorium
+# Mogą być potrzebne inne pakiety do kompilacji SDL
+export CC=$(which clang-19)
+export CXX=$(which clang++-19)
+git clone https://github.com/furtarball/battleships
+cd battleships
+git checkout ancient-distros
+git submodule init
+git submodule update
+git -C vendored/SDL checkout release-3.2.28
+git -C vendored/SDL_ttf checkout release-3.2.2
+cmake -G "Ninja" -B build
+cmake --build build
+```
+
 ## Architektura
 
 Jednowątkowy *serwer* wykorzystuje gniazda nieblokujące i multipleksację wejść za pomocą mechanizmu `kqueue` na systemach ze współczesnej rodziny BSD i macOS oraz `epoll` na Linuksie.

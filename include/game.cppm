@@ -161,10 +161,10 @@ class Game {
 	}
 	bool player_won(int id) {
 		if (id == id1) {
-			return shots_accurate1 == grid1.count();
+			return shots_accurate1 == grid2.count();
 		}
 		if (id == id2) {
-			return shots_accurate2 == grid2.count();
+			return shots_accurate2 == grid1.count();
 		}
 		return false;
 	}

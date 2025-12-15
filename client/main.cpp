@@ -5,9 +5,7 @@ import battleships_client;
 
 int main(int argc, char** argv) {
 	try {
-		Client client{argv[1], std::stoi(argv[2])};
-		while (client.run() > 0)
-			;
+		Client{argv[1], std::stoi(argv[2])}.run();
 	} catch (std::runtime_error& e) {
 		SDL_ShowSimpleMessageBox(
 			SDL_MESSAGEBOX_ERROR, "Battleships", e.what(), nullptr);

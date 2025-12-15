@@ -38,6 +38,7 @@ WRAPPED(SDL_Renderer, SDL_DestroyRenderer);
 WRAPPED(SDL_Surface, SDL_DestroySurface);
 WRAPPED(SDL_Texture, SDL_DestroyTexture);
 WRAPPED(TTF_Font, TTF_CloseFont);
+WRAPPED(SDL_Semaphore, SDL_DestroySemaphore);
 
 constexpr size_t margin{6}, size{24}, hitmargin{4}, topbar{22};
 
@@ -86,6 +87,15 @@ export class Client {
 	Wrapped<SDL_Window> window;
 	Wrapped<SDL_Renderer> renderer;
 	Wrapped<TTF_Font> font;
+	struct ThreadComm {
+		Wrapped<SDL_Semaphore> net_sem;
+		const uint32_t event;
+		const int sock;
+		bool disconnect;
+		Messages::Wire msg;
+		bool quit;
+	} thread_comm;
+	SDL_Thread* net_comm;
 	std::string status;
 	std::vector<SDL_FRect> squares, my_ships, hits, misses;
 	void renderstatus() {
@@ -109,6 +119,24 @@ export class Client {
 		renderstatus();
 		SDL_RenderPresent(renderer);
 	}
+	static int net_thread(void* opaque) {
+		ThreadComm& c{*reinterpret_cast<ThreadComm*>(opaque)};
+		while (true) {
+			SDL_WaitSemaphore(c.net_sem);
+			if (c.quit) {
+				return 0;
+			}
+			auto [d, m] = receive(c.sock);
+			c.disconnect = d;
+			c.msg = m;
+			SDL_Event e{c.event};
+			SDL_PushEvent(&e);
+			if (d) {
+				return 0;
+			}
+		}
+		return 0;
+	}
 
 	public:
 	Client(const char* addr, int port)
@@ -117,7 +145,11 @@ export class Client {
 			  ((size + margin) * Game::width + margin) * 2,
 			  (size + margin) * Game::height + margin + topbar, 0)},
 		  renderer{SDL_CreateRenderer(window, NULL)},
-		  font{TTF_OpenFont((std::string{SDL_GetBasePath()} + "gallant12x22.ttf").c_str(), 22)} {
+		  font{TTF_OpenFont(
+			  (std::string{SDL_GetBasePath()} + "gallant12x22.ttf").c_str(),
+			  22)},
+		  thread_comm{
+			  SDL_CreateSemaphore(1), SDL_RegisterEvents(1), client_socket} {
 		struct sockaddr_in6 sa{};
 		sa.sin6_family = AF_INET6;
 		sa.sin6_port = htons(port);
@@ -139,8 +171,11 @@ export class Client {
 					(size + margin) * y + margin + topbar, size, size);
 			}
 		}
+
+		// start network thread
+		net_comm = SDL_CreateThread(net_thread, "net_comm", &thread_comm);
 	}
-	int run() {
+	void run() {
 		SDL_SetRenderVSync(renderer, SDL_RENDERER_VSYNC_ADAPTIVE);
 		SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 		std::random_device r;
@@ -153,14 +188,40 @@ export class Client {
 					size - (2 * hitmargin), size - (2 * hitmargin));
 			}
 		}
-		status = "Starting game";
+		status = "Starting game...";
 		render();
-		// receive status message
-		{
-			auto [dscnct, m] = receive(client_socket);
-			if ((dscnct) ||
-				(m.status().code() != Messages::Status::AWAITING_GRID)) {
-				return 1;
+		// receive status message, send grid
+		// loop is needed to receive SDL events
+		while (true) {
+			SDL_Event e{};
+			SDL_WaitEvent(&e);
+			if (e.type == SDL_EVENT_QUIT) {
+				thread_comm.quit = true;
+				SDL_SignalSemaphore(thread_comm.net_sem);
+				SDL_DetachThread(net_comm);
+				return;
+			}
+			if (e.type == thread_comm.event) {
+				if (thread_comm.disconnect) {
+					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+						"Battleships", "Server disconnected", window);
+					SDL_DetachThread(net_comm);
+					return;
+				}
+				if (thread_comm.msg.status().code() !=
+					Messages::Status::AWAITING_GRID) {
+					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+						"Battleships", "Unexpected message from server",
+						window);
+					thread_comm.quit = true;
+					SDL_SignalSemaphore(thread_comm.net_sem);
+					SDL_DetachThread(net_comm);
+					return;
+				} else {
+					// ok to continue
+					SDL_SignalSemaphore(thread_comm.net_sem);
+					break;
+				}
 			}
 		}
 		// send grid
@@ -174,66 +235,84 @@ export class Client {
 		Game::Point last_move{0, 0};
 		while (true) {
 			SDL_Event e{};
-			SDL_PollEvent(&e);
-			auto [dscnct, m] = receive(client_socket, MSG_DONTWAIT);
-			if (dscnct) {
-				return 0;
-			}
-			if (m.has_move()) {
-				move_made = false;
-				last_move = Game::Point{m.move().x(), m.move().y()};
-			} else if (m.has_status()) {
-				if (m.status().code() == Messages::Status::YOUR_MOVE) {
-					status = "Your move";
-					my_move = true;
-				} else if (m.status().code() == Messages::Status::WRONG_MOVE) {
-					status = "Wrong move, try something else";
-					my_move = true;
-					move_made = false;
-				} else if (m.status().code() ==
-						   Messages::Status::OPPONENTS_MOVE) {
-					status += " / opponent's move";
-					my_move = false;
-				} else if (m.status().code() == Messages::Status::MISS) {
-					status = "Miss";
-					SDL_FRect square{
-						static_cast<float>(
-							(size + margin) * last_move.x + margin +
-							((my_move)
-									? (Game::width * (size + margin) + margin)
-									: (0))),
-						static_cast<float>(
-							(size + margin) * last_move.y + margin + topbar),
-						size, size};
-					misses.push_back(square);
-				} else if (m.status().code() == Messages::Status::HIT) {
-					status = "Hit ship of size " +
-							 std::to_string(m.status().hit_ship_size());
-					if (m.status().ship_sunken()) {
-						status += "; sunken!";
-					}
-					SDL_FRect square{
-						static_cast<float>(
-							(size + margin) * last_move.x + margin +
-							((my_move)
-									? (Game::width * (size + margin) + margin)
-									: (0))),
-						static_cast<float>(
-							(size + margin) * last_move.y + margin + topbar),
-						size, size};
-					hits.push_back(square);
-				} else if (m.status().code() == Messages::Status::WIN) {
-					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
-						"Battleships", "You win!", window);
-					return 1;
-				} else if (m.status().code() == Messages::Status::LOSS) {
-					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
-						"Battleships", "You lose!", window);
-					return 1;
+			SDL_WaitEvent(&e);
+			if (e.type == thread_comm.event) {
+				if (thread_comm.disconnect) {
+					SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+						"Battleships",
+						"Opponent left game or server disconnected", window);
+					SDL_DetachThread(net_comm);
+					return;
 				}
-			}
-			render();
-			if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+				const auto& m{thread_comm.msg};
+				if (m.has_move()) {
+					move_made = false;
+					last_move = Game::Point{m.move().x(), m.move().y()};
+				} else if (m.has_status()) {
+					if (m.status().code() == Messages::Status::YOUR_MOVE) {
+						status = "Your move";
+						render();
+						my_move = true;
+					} else if (m.status().code() ==
+							   Messages::Status::WRONG_MOVE) {
+						status = "Wrong move, try something else";
+						render();
+						my_move = true;
+						move_made = false;
+					} else if (m.status().code() ==
+							   Messages::Status::OPPONENTS_MOVE) {
+						status += " / opponent's move";
+						render();
+						my_move = false;
+					} else if (m.status().code() == Messages::Status::MISS) {
+						status = "Miss";
+						SDL_FRect square{
+							static_cast<float>(
+								(size + margin) * last_move.x + margin +
+								((my_move) ? (Game::width * (size + margin) +
+												 margin)
+										   : (0))),
+							static_cast<float>((size + margin) * last_move.y +
+											   margin + topbar),
+							size, size};
+						misses.push_back(square);
+						render();
+					} else if (m.status().code() == Messages::Status::HIT) {
+						status = "Hit ship of size " +
+								 std::to_string(m.status().hit_ship_size());
+						if (m.status().ship_sunken()) {
+							status += "; sunken!";
+						}
+						render();
+						SDL_FRect square{
+							static_cast<float>(
+								(size + margin) * last_move.x + margin +
+								((my_move) ? (Game::width * (size + margin) +
+												 margin)
+										   : (0))),
+							static_cast<float>((size + margin) * last_move.y +
+											   margin + topbar),
+							size, size};
+						hits.push_back(square);
+						render();
+					} else if (m.status().code() == Messages::Status::WIN) {
+						SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
+							"Battleships", "You win!", window);
+						thread_comm.quit = true;
+						SDL_SignalSemaphore(thread_comm.net_sem);
+						SDL_DetachThread(net_comm);
+						return;
+					} else if (m.status().code() == Messages::Status::LOSS) {
+						SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
+							"Battleships", "You lose!", window);
+						thread_comm.quit = true;
+						SDL_SignalSemaphore(thread_comm.net_sem);
+						SDL_DetachThread(net_comm);
+						return;
+					}
+				}
+				SDL_SignalSemaphore(thread_comm.net_sem);
+			} else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 				float x, y;
 				SDL_GetMouseState(&x, &y);
 				x -= Game::width * (size + margin) + margin;
@@ -258,9 +337,11 @@ export class Client {
 						0);
 					move_made = true;
 				}
-			}
-			if (e.type == SDL_EVENT_QUIT) {
-				return 0;
+			} else if (e.type == SDL_EVENT_QUIT) {
+				thread_comm.quit = true;
+				SDL_SignalSemaphore(thread_comm.net_sem);
+				SDL_DetachThread(net_comm);
+				return;
 			}
 		}
 	}
